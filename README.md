@@ -11,24 +11,31 @@ A macOS menu bar app that spins up Vultr VPS instances as Tailscale exit nodes w
 - **Status at a glance** — Menu bar icon changes color: white (offline), yellow (node ready), green (connected)
 - **Automatic route approval** — Exit node routes are auto-approved via the Tailscale API
 
-## Requirements
+## Install
 
-- macOS 14.0+
+### Download (no Xcode needed)
+
+1. Download `ExitLauncher.zip` from the [latest release](https://github.com/aaronbailey/exitlauncher/releases/latest)
+2. Unzip and drag `ExitLauncher.app` to your Applications folder
+3. Right-click → **Open** on first launch (to bypass Gatekeeper)
+
+### Requirements
+
+- macOS 14.0+ (Sonoma or later)
 - [Tailscale](https://apps.apple.com/us/app/tailscale/id1475387142?mt=12) (Mac App Store version)
-- [Xcode](https://apps.apple.com/us/app/xcode/id497799835?mt=12) (to build)
-- [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 
-## Setup
-
-### 1. Build
+### Build from source
 
 ```bash
+brew install xcodegen
 xcodegen generate
 open ExitLauncher.xcodeproj
 # Cmd+R to build and run
 ```
 
-### 2. API Keys
+## Setup
+
+### API Keys
 
 Open the app from the menu bar and go to **Settings**. You need three keys:
 
