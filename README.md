@@ -122,4 +122,4 @@ Auto-destroy timers prevent forgotten instances from running up a bill.
 
 ## License
 
-MIT
+Copyright 2026 Aaron Bailey. All rights reserved.
