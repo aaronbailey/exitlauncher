@@ -88,7 +88,7 @@ actor DigitalOceanAPI {
             let prefix = String(r.slug.prefix(while: { $0.isLetter }))
             let meta = Self.regionMeta[prefix]
             return Region(
-                id: r.slug,
+                slug: r.slug,
                 provider: .digitalOcean,
                 city: r.name, // Use API name directly: "New York 1", "Atlanta 1", etc.
                 country: meta?.country ?? "",

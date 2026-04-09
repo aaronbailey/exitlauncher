@@ -53,9 +53,8 @@ actor TailscaleAPI {
         return data
     }
 
-    /// Find a device in the tailnet by hostname and approve its exit node routes.
+    /// Find a device in the tailnet by hostname, wait for it to advertise exit node routes, then approve them.
     func approveExitNode(hostname: String) async throws {
-        // List devices in tailnet
         let data = try await request("GET", path: "tailnet/-/devices")
         let response = try JSONDecoder().decode(DevicesResponse.self, from: data)
 
@@ -65,11 +64,34 @@ actor TailscaleAPI {
             throw TailscaleAPIError.deviceNotFound(hostname)
         }
 
-        // Approve exit node routes (0.0.0.0/0 and ::/0)
+        // Check if the device has advertised exit node routes yet
+        let routeData = try await request("GET", path: "device/\(device.id)/routes")
+        let routes = try JSONDecoder().decode(RoutesResponse.self, from: routeData)
+
+        // If no routes advertised yet, throw deviceNotFound to trigger retry in polling loop
+        guard routes.advertisedRoutes.contains("0.0.0.0/0") else {
+            throw TailscaleAPIError.deviceNotFound(hostname)
+        }
+
+        // Approve exit node routes
         let routeBody = try JSONSerialization.data(withJSONObject: [
             "routes": ["0.0.0.0/0", "::/0"]
         ])
         _ = try await request("POST", path: "device/\(device.id)/routes", body: routeBody)
+    }
+
+    /// Remove a device from the tailnet by hostname.
+    func removeDevice(hostname: String) async throws {
+        let data = try await request("GET", path: "tailnet/-/devices")
+        let response = try JSONDecoder().decode(DevicesResponse.self, from: data)
+
+        guard let device = response.devices.first(where: {
+            $0.hostname.lowercased() == hostname.lowercased()
+        }) else {
+            return // Already gone — nothing to do
+        }
+
+        _ = try await request("DELETE", path: "device/\(device.id)")
     }
 }
 
@@ -82,4 +104,9 @@ struct DevicesResponse: Codable {
 struct TailscaleDevice: Codable {
     let id: String
     let hostname: String
+}
+
+struct RoutesResponse: Codable {
+    let advertisedRoutes: [String]
+    let enabledRoutes: [String]
 }

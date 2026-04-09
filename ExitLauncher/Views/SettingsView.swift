@@ -11,6 +11,7 @@ struct SettingsView: View {
         (.vultrAPIKey, "Vultr API Key", "my.vultr.com/settings/#settingsapi"),
         (.digitalOceanAPIKey, "Digital Ocean API Key", "cloud.digitalocean.com/account/api/tokens"),
         (.flyioAPIKey, "Fly.io API Token", "fly.io/docs/flyctl/tokens/"),
+        (.awsCredentials, "AWS Credentials", "ACCESS_KEY_ID:SECRET_ACCESS_KEY (from IAM console)"),
         (.tailscaleAuthKey, "Tailscale Auth Key", "Reusable key for VPS to join tailnet (tskey-auth-...)"),
         (.tailscaleAPIKey, "Tailscale API Key", "Auto-approve exit node routes (tskey-api-...)"),
     ]
@@ -37,7 +38,7 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    ForEach(fields.prefix(3), id: \.0) { field in
+                    ForEach(fields.prefix(4), id: \.0) { field in
                         keyField(key: field.0, label: field.1, hint: field.2)
                     }
 

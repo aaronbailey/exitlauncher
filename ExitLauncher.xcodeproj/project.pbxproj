@@ -15,6 +15,7 @@
 		736FE8CD28597F00E828E477 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F09F8DB11EF469E3617C471F /* Assets.xcassets */; };
 		7AD514AD8515ABC418890CE8 /* Region.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C73A41580B3B5F935E13CC7 /* Region.swift */; };
 		7B48B973350C986C1C2DF138 /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFA4AD5166B05C3D0E7F13A6 /* Provider.swift */; };
+		9A695F7A216AA3D257BECCF2 /* AWSAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 025D04F981B3F12D7312922C /* AWSAPI.swift */; };
 		A1E963FCF47C741473A9FEF0 /* FlyioAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE67BE4AD70638A126DD2ECF /* FlyioAPI.swift */; };
 		ABD5302596F02421A695A12A /* CloudInitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2423CF7315CFEF3257D0950 /* CloudInitService.swift */; };
 		BF6140110F6D199B51AD4C33 /* DigitalOceanAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB708D80316AD0028944D9C /* DigitalOceanAPI.swift */; };
@@ -26,9 +27,11 @@
 		DF5AC60461CF00CF31708AFE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E6B3BF1E62EA80897B7BF3 /* SettingsView.swift */; };
 		EBB981EEE55B161A2475D8D1 /* VultrAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CC81209BD672AEC58709D8B /* VultrAPI.swift */; };
 		F2FDA45070E9B68745AB88AD /* InstanceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61FDC2961ABF435AFC013600 /* InstanceManager.swift */; };
+		F90E2E3A8E30BFFBA78209A9 /* AWSSigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C626A5101761C4727D51AA4 /* AWSSigner.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		025D04F981B3F12D7312922C /* AWSAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AWSAPI.swift; sourceTree = "<group>"; };
 		045566665C69939C6ECC4A16 /* InstanceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceStore.swift; sourceTree = "<group>"; };
 		1C1F1127EA7C94A4DC71F4CB /* TailscaleAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailscaleAPI.swift; sourceTree = "<group>"; };
 		24E6B3BF1E62EA80897B7BF3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -41,6 +44,7 @@
 		5FDE86B7D5E5E96BAC5AC86F /* ExitLauncher.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ExitLauncher.entitlements; sourceTree = "<group>"; };
 		60B6E809139B4B027D3D2F02 /* ExitLauncher.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ExitLauncher.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		61FDC2961ABF435AFC013600 /* InstanceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceManager.swift; sourceTree = "<group>"; };
+		6C626A5101761C4727D51AA4 /* AWSSigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AWSSigner.swift; sourceTree = "<group>"; };
 		7CC81209BD672AEC58709D8B /* VultrAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VultrAPI.swift; sourceTree = "<group>"; };
 		A1963E3CC56603C86E2B8CF2 /* VPSInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VPSInstance.swift; sourceTree = "<group>"; };
 		B5EEA68412A9C771CE4933FB /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
@@ -98,6 +102,8 @@
 		F453940EC4540A01C340049A /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				025D04F981B3F12D7312922C /* AWSAPI.swift */,
+				6C626A5101761C4727D51AA4 /* AWSSigner.swift */,
 				F2423CF7315CFEF3257D0950 /* CloudInitService.swift */,
 				BFB708D80316AD0028944D9C /* DigitalOceanAPI.swift */,
 				FE67BE4AD70638A126DD2ECF /* FlyioAPI.swift */,
@@ -189,6 +195,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9A695F7A216AA3D257BECCF2 /* AWSAPI.swift in Sources */,
+				F90E2E3A8E30BFFBA78209A9 /* AWSSigner.swift in Sources */,
 				ABD5302596F02421A695A12A /* CloudInitService.swift in Sources */,
 				BF6140110F6D199B51AD4C33 /* DigitalOceanAPI.swift in Sources */,
 				6274F6FDBA9E64A46D84300C /* ExitLauncherApp.swift in Sources */,

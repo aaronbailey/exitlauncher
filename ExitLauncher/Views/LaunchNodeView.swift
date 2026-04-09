@@ -34,15 +34,14 @@ struct LaunchNodeView: View {
     @EnvironmentObject var manager: InstanceManager
     var onDismiss: () -> Void
 
-    @State private var selectedProvider: Provider = .vultr
-    @State private var regions: [Region] = []
+    @State private var allRegions: [Region] = []
     @State private var selectedRegion: Region?
     @State private var selectedTimer: DestroyTimer = .oneHour
     @State private var isLoadingRegions = true
     @State private var loadError: String?
     @State private var favorites: Set<String> = []
+    @State private var enabledProviders: Set<Provider> = []
 
-    /// Only show providers that have an API key configured
     private var availableProviders: [Provider] {
         Provider.allCases.filter { provider in
             let key = KeychainService.read(key: provider.keychainKey)
@@ -63,11 +62,6 @@ struct LaunchNodeView: View {
                 Spacer()
             }
 
-            // Provider picker (only if multiple configured)
-            if availableProviders.count > 1 {
-                providerPicker
-            }
-
             if isLoadingRegions {
                 ProgressView("Loading regions...")
                     .frame(maxWidth: .infinity, minHeight: 180)
@@ -80,7 +74,7 @@ struct LaunchNodeView: View {
                         .font(.caption)
                         .multilineTextAlignment(.center)
                     Button("Retry") {
-                        Task { await loadRegions() }
+                        Task { await loadAllRegions() }
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: 180)
@@ -96,6 +90,9 @@ struct LaunchNodeView: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 180)
             } else {
+                if availableProviders.count > 1 {
+                    providerFilter
+                }
                 regionPicker
                 timerPicker
             }
@@ -119,32 +116,54 @@ struct LaunchNodeView: View {
             }
         }
         .padding(16)
-        .frame(width: 360)
+        .frame(width: 380)
         .task {
             favorites = FavoritesStore.load()
-            if let first = availableProviders.first {
-                selectedProvider = first
-            }
-            await loadRegions()
+            await loadAllRegions()
+            enabledProviders = Set(availableProviders)
         }
     }
 
-    // MARK: - Provider Picker
+    // MARK: - Provider Filter
 
-    private var providerPicker: some View {
-        Picker("Provider", selection: $selectedProvider) {
+    private var providerFilter: some View {
+        HStack(spacing: 6) {
             ForEach(availableProviders) { provider in
-                Text(provider.displayName).tag(provider)
+                let isOn = enabledProviders.contains(provider)
+                Button {
+                    if isOn {
+                        enabledProviders.remove(provider)
+                    } else {
+                        enabledProviders.insert(provider)
+                    }
+                    // Clear selection if it's now filtered out
+                    if let sel = selectedRegion, !enabledProviders.contains(sel.provider) {
+                        selectedRegion = nil
+                    }
+                } label: {
+                    Text(provider.shortName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(isOn ? .white : provider.badgeColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(isOn ? provider.badgeColor : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5)
+                                .stroke(provider.badgeColor, lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
             }
-        }
-        .pickerStyle(.segmented)
-        .onChange(of: selectedProvider) { _ in
-            selectedRegion = nil
-            Task { await loadRegions() }
+            Spacer()
         }
     }
 
     // MARK: - Region Picker
+
+    private var filteredRegions: [Region] {
+        allRegions.filter { enabledProviders.contains($0.provider) }
+    }
 
     private var regionPicker: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -152,9 +171,9 @@ struct LaunchNodeView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            // Favorites use provider-prefixed IDs to avoid collisions
+            let regions = filteredRegions
             let favoriteRegions = regions.filter { favorites.contains(favoriteKey($0)) }
-            let grouped = Dictionary(grouping: regions, by: \.continent)
+            let grouped = Dictionary(grouping: regions, by: \.normalizedContinent)
             let sortedContinents = grouped.keys.sorted()
 
             List(selection: $selectedRegion) {
@@ -169,7 +188,8 @@ struct LaunchNodeView: View {
 
                 ForEach(sortedContinents, id: \.self) { continent in
                     Section(continent) {
-                        ForEach(grouped[continent] ?? []) { region in
+                        let sorted = (grouped[continent] ?? []).sorted { $0.displayName < $1.displayName }
+                        ForEach(sorted) { region in
                             regionRow(region)
                                 .tag(region)
                         }
@@ -177,14 +197,15 @@ struct LaunchNodeView: View {
                 }
             }
             .listStyle(.bordered)
-            .frame(height: 250)
+            .frame(height: 280)
         }
     }
 
     private func regionRow(_ region: Region) -> some View {
         let key = favoriteKey(region)
-        return HStack {
+        return HStack(spacing: 6) {
             Text(region.displayName)
+            providerBadge(region.provider)
             Spacer()
             Button {
                 toggleFavorite(key)
@@ -196,6 +217,16 @@ struct LaunchNodeView: View {
             .buttonStyle(.plain)
             .padding(.trailing, 6)
         }
+    }
+
+    private func providerBadge(_ provider: Provider) -> some View {
+        Text(provider.shortName)
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(provider.badgeColor)
+            .clipShape(RoundedRectangle(cornerRadius: 3))
     }
 
     private func favoriteKey(_ region: Region) -> String {
@@ -229,16 +260,30 @@ struct LaunchNodeView: View {
 
     // MARK: - Actions
 
-    private func loadRegions() async {
+    private func loadAllRegions() async {
         isLoadingRegions = true
         loadError = nil
-        do {
-            regions = try await manager.loadRegions(for: selectedProvider)
-            isLoadingRegions = false
-        } catch {
-            loadError = error.localizedDescription
-            isLoadingRegions = false
+
+        var regions: [Region] = []
+
+        // Load from all configured providers in parallel
+        await withTaskGroup(of: [Region].self) { group in
+            for provider in availableProviders {
+                group.addTask {
+                    (try? await manager.loadRegions(for: provider)) ?? []
+                }
+            }
+            for await providerRegions in group {
+                regions.append(contentsOf: providerRegions)
+            }
         }
+
+        if regions.isEmpty && !availableProviders.isEmpty {
+            loadError = "Failed to load regions from any provider"
+        }
+
+        allRegions = regions
+        isLoadingRegions = false
     }
 
     private func launch() async {

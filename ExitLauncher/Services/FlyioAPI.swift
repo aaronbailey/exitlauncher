@@ -96,7 +96,7 @@ actor FlyioAPI {
             ("syd", "Sydney", "AU", "Oceania"),
             ("jnb", "Johannesburg", "ZA", "Africa"),
         ]
-        return regions.map { Region(id: $0.0, provider: .flyio, city: $0.1, country: $0.2, continent: $0.3) }
+        return regions.map { Region(slug: $0.0, provider: .flyio, city: $0.1, country: $0.2, continent: $0.3) }
     }
 
     // MARK: - App Management
@@ -124,10 +124,8 @@ actor FlyioAPI {
     func createMachine(region: String, authKey: String, hostname: String) async throws -> VPSInstance {
         try await ensureAppExists()
 
-        // Use the official Tailscale image with proper exit node config.
-        // Fly.io VMs run privileged, so kernel-mode networking works.
-        // We need init commands to enable IP forwarding and NAT masquerade
-        // since the official image doesn't set these up for exit node use.
+        // Use the official Tailscale image. Fly.io VMs run privileged,
+        // so containerboot handles IP forwarding and exit node setup via env vars.
         let config: [String: Any] = [
             "image": "tailscale/tailscale:latest",
             "guest": [
@@ -137,22 +135,9 @@ actor FlyioAPI {
             ],
             "env": [
                 "TS_AUTHKEY": authKey,
-                "TS_EXTRA_ARGS": "--advertise-exit-node --hostname=\(hostname)",
-                "TS_STATE_DIR": "/var/lib/tailscale",
-                "TS_USERSPACE": "false"
-            ],
-            "processes": [
-                [
-                    "name": "app",
-                    "entrypoint": ["/bin/sh"],
-                    "cmd": ["-c", """
-                        sysctl -w net.ipv4.ip_forward=1 && \
-                        sysctl -w net.ipv6.conf.all.forwarding=1 && \
-                        iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE && \
-                        ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE && \
-                        /usr/local/bin/containerboot
-                        """]
-                ]
+                "TS_EXTRA_ARGS": "--advertise-exit-node --accept-routes",
+                "TS_HOSTNAME": hostname,
+                "TS_STATE_DIR": "/var/lib/tailscale"
             ],
             "auto_destroy": false
         ]

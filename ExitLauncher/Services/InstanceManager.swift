@@ -11,6 +11,7 @@ class InstanceManager: ObservableObject {
     let vultr = VultrAPI()
     let digitalOcean = DigitalOceanAPI()
     let flyio = FlyioAPI()
+    let aws = AWSAPI()
     let tailscaleAPI = TailscaleAPI()
     private let store = InstanceStore()
     private var destroyTimer: Timer?
@@ -36,6 +37,8 @@ class InstanceManager: ObservableObject {
             return try await digitalOcean.listRegions()
         case .flyio:
             return await flyio.listRegions()
+        case .aws:
+            return await aws.listRegions()
         }
     }
 
@@ -50,7 +53,7 @@ class InstanceManager: ObservableObject {
         isLaunching = true
         lastError = nil
 
-        let hostname = CloudInitService.generateHostname(region: region.id)
+        let hostname = CloudInitService.generateHostname(region: region.slug)
 
         do {
             var instance: VPSInstance
@@ -59,23 +62,28 @@ class InstanceManager: ObservableObject {
             case .vultr:
                 let userData = CloudInitService.generateBase64UserData(authKey: authKey, hostname: hostname)
                 instance = try await vultr.createInstance(
-                    region: region.id, plan: "vc2-1c-1gb", userData: userData, label: hostname
+                    region: region.slug, plan: "vc2-1c-1gb", userData: userData, label: hostname
                 )
             case .digitalOcean:
                 let userData = CloudInitService.generateUserData(authKey: authKey, hostname: hostname)
                 instance = try await digitalOcean.createInstance(
-                    region: region.id, userData: userData, label: hostname
+                    region: region.slug, userData: userData, label: hostname
                 )
             case .flyio:
                 instance = try await flyio.createMachine(
-                    region: region.id, authKey: authKey, hostname: hostname
+                    region: region.slug, authKey: authKey, hostname: hostname
+                )
+            case .aws:
+                let userData = CloudInitService.generateBase64UserData(authKey: authKey, hostname: hostname)
+                instance = try await aws.createInstance(
+                    region: region.slug, userData: userData, label: hostname
                 )
             }
 
             instance = VPSInstance(
                 id: instance.id,
                 provider: region.provider,
-                region: region.id,
+                region: region.slug,
                 regionName: region.displayName,
                 tailscaleHostname: hostname,
                 ipAddress: instance.ipAddress,
@@ -123,6 +131,13 @@ class InstanceManager: ObservableObject {
                     case .flyio:
                         let machine = try await flyio.getMachine(id: instanceId)
                         isReady = machine.state == "started"
+                    case .aws:
+                        let region = instances[index].region
+                        let result = try await aws.getInstance(region: region, id: instanceId)
+                        isReady = result.status == "running"
+                        if isReady && !result.ip.isEmpty {
+                            instances[index].ipAddress = result.ip
+                        }
                     }
 
                     if isReady {
@@ -200,9 +215,14 @@ class InstanceManager: ObservableObject {
                 try await digitalOcean.deleteInstance(id: instance.id)
             case .flyio:
                 try await flyio.deleteMachine(id: instance.id)
+            case .aws:
+                try await aws.deleteInstance(region: instance.region, id: instance.id)
             }
             instances.removeAll { $0.id == instance.id }
             await store.save(instances)
+
+            // Remove from Tailscale device list
+            try? await tailscaleAPI.removeDevice(hostname: instance.tailscaleHostname)
         } catch {
             lastError = error.localizedDescription
             if let idx = instances.firstIndex(where: { $0.id == instance.id }) {

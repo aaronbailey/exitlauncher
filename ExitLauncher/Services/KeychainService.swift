@@ -4,6 +4,7 @@ enum KeychainKey: String {
     case vultrAPIKey = "vultr-api-key"
     case digitalOceanAPIKey = "digitalocean-api-key"
     case flyioAPIKey = "flyio-api-key"
+    case awsCredentials = "aws-credentials"
     case tailscaleAuthKey = "tailscale-auth-key"
     case tailscaleAPIKey = "tailscale-api-key"
 }

@@ -70,7 +70,7 @@ actor VultrAPI {
         let (data, _) = try await request("GET", path: "regions")
         let response = try decoder.decode(RegionsResponse.self, from: data)
         return response.regions.map { r in
-            Region(id: r.id, provider: .vultr, city: r.city, country: r.country, continent: r.continent)
+            Region(slug: r.id, provider: .vultr, city: r.city, country: r.country, continent: r.continent)
         }
     }
 
