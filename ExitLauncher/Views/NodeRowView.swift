@@ -8,17 +8,22 @@ struct NodeRowView: View {
         HStack {
             statusIndicator
             VStack(alignment: .leading, spacing: 2) {
-                Text(instance.tailscaleHostname)
+                Text(instance.regionName)
                     .font(.body)
                     .lineLimit(1)
-                HStack(spacing: 4) {
-                    Text(instance.regionName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let remaining = instance.timeRemainingFormatted {
-                        Text(remaining)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                Text(instance.tailscaleHostname)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if instance.status == .ready {
+                    HStack(spacing: 8) {
+                        Label(instance.uptimeFormatted, systemImage: "clock")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        if let remaining = instance.timeRemainingFormatted {
+                            Label(remaining, systemImage: "timer")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
             }

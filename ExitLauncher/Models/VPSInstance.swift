@@ -32,4 +32,18 @@ struct VPSInstance: Identifiable, Codable {
         }
         return "\(minutes)m left"
     }
+
+    var uptimeMinutes: Int {
+        Int(Date().timeIntervalSince(createdAt)) / 60
+    }
+
+    var uptimeFormatted: String {
+        let mins = uptimeMinutes
+        if mins < 60 {
+            return "\(mins)m online"
+        }
+        let hours = mins / 60
+        let remainder = mins % 60
+        return "\(hours)h \(remainder)m online"
+    }
 }

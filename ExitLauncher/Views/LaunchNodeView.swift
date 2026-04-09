@@ -18,6 +18,18 @@ enum DestroyTimer: String, CaseIterable, Identifiable {
     }
 }
 
+struct FavoritesStore {
+    private static let key = "favoriteRegions"
+
+    static func load() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+    }
+
+    static func save(_ favorites: Set<String>) {
+        UserDefaults.standard.set(Array(favorites), forKey: key)
+    }
+}
+
 struct LaunchNodeView: View {
     @EnvironmentObject var manager: InstanceManager
     var onDismiss: () -> Void
@@ -27,6 +39,7 @@ struct LaunchNodeView: View {
     @State private var selectedTimer: DestroyTimer = .oneHour
     @State private var isLoadingRegions = true
     @State private var loadError: String?
+    @State private var favorites: Set<String> = []
 
     var body: some View {
         VStack(spacing: 12) {
@@ -83,6 +96,7 @@ struct LaunchNodeView: View {
         .padding(16)
         .frame(width: 360)
         .task {
+            favorites = FavoritesStore.load()
             await loadRegions()
         }
     }
@@ -95,22 +109,56 @@ struct LaunchNodeView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
+            let favoriteRegions = regions.filter { favorites.contains($0.id) }
             let grouped = Dictionary(grouping: regions, by: \.continent)
             let sortedContinents = grouped.keys.sorted()
 
             List(selection: $selectedRegion) {
+                if !favoriteRegions.isEmpty {
+                    Section("Favorites") {
+                        ForEach(favoriteRegions) { region in
+                            regionRow(region)
+                                .tag(region)
+                        }
+                    }
+                }
+
                 ForEach(sortedContinents, id: \.self) { continent in
                     Section(continent) {
                         ForEach(grouped[continent] ?? []) { region in
-                            Text(region.displayName)
+                            regionRow(region)
                                 .tag(region)
                         }
                     }
                 }
             }
             .listStyle(.bordered)
-            .frame(height: 200)
+            .frame(height: 250)
         }
+    }
+
+    private func regionRow(_ region: Region) -> some View {
+        HStack {
+            Text(region.displayName)
+            Spacer()
+            Button {
+                toggleFavorite(region.id)
+            } label: {
+                Image(systemName: favorites.contains(region.id) ? "star.fill" : "star")
+                    .foregroundStyle(favorites.contains(region.id) ? .yellow : .secondary)
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func toggleFavorite(_ id: String) {
+        if favorites.contains(id) {
+            favorites.remove(id)
+        } else {
+            favorites.insert(id)
+        }
+        FavoritesStore.save(favorites)
     }
 
     // MARK: - Timer Picker

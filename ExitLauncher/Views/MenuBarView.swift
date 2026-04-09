@@ -71,19 +71,12 @@ struct MenuBarView: View {
                     .fill(.green)
                     .frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Connected via \(instance.tailscaleHostname)")
+                    Text("Connected via \(instance.regionName)")
                         .font(.headline)
                         .lineLimit(1)
-                    HStack {
-                        Text(instance.regionName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if let remaining = instance.timeRemainingFormatted {
-                            Text("  \(remaining)")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                    }
+                    Text(instance.tailscaleHostname)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Disconnect") {

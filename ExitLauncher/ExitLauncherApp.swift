@@ -57,13 +57,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let ctx = NSGraphicsContext.current!.cgContext
             let strokeWidth: CGFloat = 1.3
 
-            // Use menu bar label color so it adapts to light/dark mode
-            let strokeColor = NSColor.labelColor
+            // Entire icon is one color — changes by state
+            let color: NSColor
+            switch state {
+            case .offline:
+                color = NSColor.labelColor // white in dark mode, black in light
+            case .ready:
+                color = NSColor.systemYellow
+            case .connected:
+                color = NSColor.systemGreen
+            }
+
+            color.setStroke()
 
             // Rocket pointing up-right (~40° tilt)
             ctx.saveGState()
             ctx.translateBy(x: 9, y: 9)
-            ctx.rotate(by: -.pi / 4.5) // tilt right ~40°
+            ctx.rotate(by: -.pi / 4.5)
             ctx.translateBy(x: -9, y: -9)
 
             // --- Rocket body ---
@@ -79,28 +89,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                        controlPoint1: NSPoint(x: 5.2, y: 10),
                        controlPoint2: NSPoint(x: 6.2, y: 15))
             body.close()
-
-            // Fill based on state
-            switch state {
-            case .offline:
-                break // transparent — no fill
-            case .ready:
-                NSColor.systemYellow.setFill()
-                body.fill()
-            case .connected:
-                NSColor.systemGreen.setFill()
-                body.fill()
-            }
-
-            strokeColor.setStroke()
             body.lineWidth = strokeWidth
             body.stroke()
-
-            // --- Porthole ---
-            let porthole = NSBezierPath(ovalIn: NSRect(x: 7.5, y: 10.5, width: 3, height: 3))
-            strokeColor.setStroke()
-            porthole.lineWidth = strokeWidth
-            porthole.stroke()
 
             // --- Left fin ---
             let leftFin = NSBezierPath()
@@ -109,7 +99,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             leftFin.line(to: NSPoint(x: 5, y: 4.5))
             leftFin.line(to: NSPoint(x: 6.8, y: 6))
             leftFin.close()
-            strokeColor.setStroke()
             leftFin.lineWidth = strokeWidth
             leftFin.stroke()
 
@@ -120,12 +109,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             rightFin.line(to: NSPoint(x: 13, y: 4.5))
             rightFin.line(to: NSPoint(x: 11.2, y: 6))
             rightFin.close()
-            strokeColor.setStroke()
             rightFin.lineWidth = strokeWidth
             rightFin.stroke()
 
             // --- Exhaust flames ---
-            strokeColor.setStroke()
             let flame1 = NSBezierPath()
             flame1.move(to: NSPoint(x: 7.8, y: 5.5))
             flame1.line(to: NSPoint(x: 7.3, y: 2.5))
@@ -148,8 +135,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             return true
         }
-        // Never template — we handle light/dark via NSColor.labelColor,
-        // and need yellow/green fills to render as actual colors
+        // Non-template so yellow/green render as actual colors
         image.isTemplate = false
         return image
     }
