@@ -73,6 +73,8 @@ Open the app from the menu bar rocket icon and go to **Settings**. You need at l
 6. Copy both values and enter in Settings as: `ACCESS_KEY_ID:SECRET_ACCESS_KEY` (joined with a colon)
 7. **Important**: Copy the secret key immediately — AWS only shows it once
 
+> **Note on AWS regions**: ExitLauncher lists 16 default-enabled AWS regions. Some regions (Cape Town, Bahrain, Hong Kong, Jakarta, etc.) are "opt-in" and disabled by default. To enable them, go to [AWS Account Settings](https://console.aws.amazon.com/billing/home#/account) → **AWS Regions** → click **Enable** next to the region you want.
+
 ### Tailscale keys (required)
 
 Both keys are created at [login.tailscale.com/admin/settings/keys](https://login.tailscale.com/admin/settings/keys):

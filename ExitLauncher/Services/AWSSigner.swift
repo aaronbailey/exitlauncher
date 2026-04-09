@@ -20,45 +20,36 @@ struct AWSSigner {
         dateFormatter.dateFormat = "yyyyMMdd"
         let dateStamp = dateFormatter.string(from: date)
 
+        let host = request.url!.host!
+
         request.setValue(amzDate, forHTTPHeaderField: "X-Amz-Date")
         request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
-
-        let host = request.url!.host!
         request.setValue(host, forHTTPHeaderField: "Host")
 
-        let method = request.httpMethod ?? "GET"
-        let path = request.url?.path ?? "/"
-        let query = request.url?.query ?? ""
-
+        let method = request.httpMethod ?? "POST"
         let bodyHash = sha256Hex(body)
-        request.setValue(bodyHash, forHTTPHeaderField: "X-Amz-Content-Sha256")
 
-        // Canonical headers
-        let signedHeaders = "content-type;host;x-amz-content-sha256;x-amz-date"
-        let canonicalHeaders = """
-        content-type:\(request.value(forHTTPHeaderField: "Content-Type")!)
-        host:\(host)
-        x-amz-content-sha256:\(bodyHash)
-        x-amz-date:\(amzDate)
+        // Sign only: content-type, host, x-amz-date (matching botocore's behavior)
+        let signedHeaders = "content-type;host;x-amz-date"
+        let canonicalHeaders =
+            "content-type:application/x-www-form-urlencoded; charset=utf-8\n" +
+            "host:\(host)\n" +
+            "x-amz-date:\(amzDate)\n"
 
-        """
-
-        let canonicalRequest = """
-        \(method)
-        \(path.isEmpty ? "/" : path)
-        \(query)
-        \(canonicalHeaders)
-        \(signedHeaders)
-        \(bodyHash)
-        """
+        let canonicalRequest =
+            "\(method)\n" +
+            "/\n" +
+            "\n" +
+            "\(canonicalHeaders)\n" +
+            "\(signedHeaders)\n" +
+            "\(bodyHash)"
 
         let scope = "\(dateStamp)/\(region)/\(service)/aws4_request"
-        let stringToSign = """
-        AWS4-HMAC-SHA256
-        \(amzDate)
-        \(scope)
-        \(sha256Hex(Data(canonicalRequest.utf8)))
-        """
+        let stringToSign =
+            "AWS4-HMAC-SHA256\n" +
+            "\(amzDate)\n" +
+            "\(scope)\n" +
+            "\(sha256Hex(Data(canonicalRequest.utf8)))"
 
         let kDate = hmacSHA256(key: Data("AWS4\(secretAccessKey)".utf8), data: Data(dateStamp.utf8))
         let kRegion = hmacSHA256(key: kDate, data: Data(region.utf8))

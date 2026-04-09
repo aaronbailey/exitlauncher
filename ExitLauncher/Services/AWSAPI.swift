@@ -38,8 +38,6 @@ actor AWSAPI {
         "ap-south-1": "ami-053b12d3152c0cc71",
         "sa-east-1": "ami-078e0c0dab95b0e2d",
         "ca-central-1": "ami-05f1e29dc87b0e84f",
-        "me-south-1": "ami-0b4946c5b100ddd69",
-        "af-south-1": "ami-0e4adb5ad38b15994",
     ]
 
     private func getCredentials() throws -> (accessKeyId: String, secretAccessKey: String) {
@@ -99,7 +97,8 @@ actor AWSAPI {
     // MARK: - Regions
 
     func listRegions() -> [Region] {
-        // AWS regions with human-readable names
+        // Only default-enabled AWS regions (opt-in regions like af-south-1,
+        // me-south-1, ap-east-1 etc. require manual activation in AWS console)
         let regions: [(String, String, String, String)] = [
             ("us-east-1", "N. Virginia", "US", "North America"),
             ("us-east-2", "Ohio", "US", "North America"),
@@ -117,8 +116,6 @@ actor AWSAPI {
             ("ap-northeast-2", "Seoul", "KR", "Asia"),
             ("ap-south-1", "Mumbai", "IN", "Asia"),
             ("sa-east-1", "Sao Paulo", "BR", "South America"),
-            ("af-south-1", "Cape Town", "ZA", "Africa"),
-            ("me-south-1", "Bahrain", "BH", "Middle East"),
         ]
         return regions.map { Region(slug: $0.0, provider: .aws, city: $0.1, country: $0.2, continent: $0.3) }
     }
