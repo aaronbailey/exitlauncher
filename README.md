@@ -120,6 +120,10 @@ Click the rocket icon → **Launch New Node** → pick a region → set a timer 
 
 Auto-destroy timers prevent forgotten instances from running up a bill.
 
+## Disclaimer
+
+This software is provided "as is", without warranty of any kind. Use at your own risk. You are responsible for any charges incurred on your cloud provider and Tailscale accounts. The author is not liable for any costs, damages, or issues arising from the use of this software.
+
 ## License
 
 Copyright 2026 Aaron Bailey. All rights reserved.
