@@ -149,6 +149,7 @@ struct LaunchNodeView: View {
                     .font(.caption)
             }
             .buttonStyle(.plain)
+            .padding(.trailing, 6)
         }
     }
 
