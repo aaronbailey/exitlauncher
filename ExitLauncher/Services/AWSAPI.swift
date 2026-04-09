@@ -19,26 +19,51 @@ enum AWSError: LocalizedError {
 actor AWSAPI {
     private let session = URLSession.shared
 
-    // Ubuntu 24.04 LTS AMIs per region (arm64 for Graviton, cheaper)
-    // These are official Canonical AMIs — updated periodically
-    private static let ubuntuAMIs: [String: String] = [
-        "us-east-1": "ami-0a7a4e87939439934",
-        "us-east-2": "ami-0d1f52ff90954b297",
-        "us-west-1": "ami-014d544cfb2009aeb",
-        "us-west-2": "ami-09040d770ffe2224f",
-        "eu-west-1": "ami-0a89610b2f8f24e6d",
-        "eu-west-2": "ami-0b2287cff5d6be10f",
-        "eu-west-3": "ami-0dafa01a84941fb58",
-        "eu-central-1": "ami-0084a47cc718c111a",
-        "eu-north-1": "ami-0699841e73398bc4d",
-        "ap-southeast-1": "ami-01938df366ac2d954",
-        "ap-southeast-2": "ami-0e0a09e4e0a5fc266",
-        "ap-northeast-1": "ami-0a0b7b240264a48d7",
-        "ap-northeast-2": "ami-01ed8ade75d4eee2f",
-        "ap-south-1": "ami-053b12d3152c0cc71",
-        "sa-east-1": "ami-078e0c0dab95b0e2d",
-        "ca-central-1": "ami-05f1e29dc87b0e84f",
-    ]
+    // Cache AMI lookups per region for the session
+    private var amiCache: [String: String] = [:]
+
+    /// Look up the latest Ubuntu 24.04 LTS AMI for a region using DescribeImages.
+    /// Canonical's owner ID is 099720109477. Results are cached per session.
+    private func lookupUbuntuAMI(region: String) async throws -> String {
+        if let cached = amiCache[region] { return cached }
+
+        let params: [String: String] = [
+            "Action": "DescribeImages",
+            "Owner.1": "099720109477",
+            "Filter.1.Name": "name",
+            "Filter.1.Value.1": "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*",
+            "Filter.2.Name": "state",
+            "Filter.2.Value.1": "available",
+        ]
+
+        let data = try await ec2Request(region: region, params: params)
+        let xml = String(data: data, encoding: .utf8) ?? ""
+
+        // Find the most recent AMI by picking the last imageId
+        // (AWS returns them; we grab all and pick the newest by name sort)
+        var amis: [(id: String, name: String)] = []
+        var searchFrom = xml.startIndex
+        while let idRange = xml.range(of: "<imageId>", range: searchFrom..<xml.endIndex),
+              let idEnd = xml.range(of: "</imageId>", range: idRange.upperBound..<xml.endIndex) {
+            let amiId = String(xml[idRange.upperBound..<idEnd.lowerBound])
+            // Find the corresponding name
+            var name = ""
+            if let nameRange = xml.range(of: "<name>", range: idEnd.upperBound..<xml.endIndex),
+               let nameEnd = xml.range(of: "</name>", range: nameRange.upperBound..<xml.endIndex) {
+                name = String(xml[nameRange.upperBound..<nameEnd.lowerBound])
+            }
+            amis.append((amiId, name))
+            searchFrom = idEnd.upperBound
+        }
+
+        // Sort by name descending (names contain dates like 20260321) to get newest
+        guard let newest = amis.sorted(by: { $0.name > $1.name }).first else {
+            throw AWSError.parseError("No Ubuntu 24.04 AMI found in \(region)")
+        }
+
+        amiCache[region] = newest.id
+        return newest.id
+    }
 
     private func getCredentials() throws -> (accessKeyId: String, secretAccessKey: String) {
         guard let creds = KeychainService.read(key: .awsCredentials), !creds.isEmpty else {
@@ -120,12 +145,88 @@ actor AWSAPI {
         return regions.map { Region(slug: $0.0, provider: .aws, city: $0.1, country: $0.2, continent: $0.3) }
     }
 
+    // MARK: - VPC/Subnet helpers
+
+    /// Find a usable subnet, or create a VPC + subnet + internet gateway if none exists.
+    private func findOrCreateSubnet(region: String) async throws -> String {
+        // Try existing subnets first
+        let data = try await ec2Request(region: region, params: ["Action": "DescribeSubnets"])
+        let xml = String(data: data, encoding: .utf8) ?? ""
+        if let subnetId = extractXMLValue(from: xml, tag: "subnetId") {
+            return subnetId
+        }
+
+        // No subnets — create a VPC, subnet, internet gateway, and route table
+        // 1. Create VPC
+        let vpcData = try await ec2Request(region: region, params: [
+            "Action": "CreateVpc",
+            "CidrBlock": "10.0.0.0/16",
+            "TagSpecification.1.ResourceType": "vpc",
+            "TagSpecification.1.Tag.1.Key": "Name",
+            "TagSpecification.1.Tag.1.Value": "exitlauncher",
+        ])
+        let vpcXml = String(data: vpcData, encoding: .utf8) ?? ""
+        guard let vpcId = extractXMLValue(from: vpcXml, tag: "vpcId") else {
+            throw AWSError.parseError("Failed to create VPC")
+        }
+
+        // 2. Create subnet
+        let subnetData = try await ec2Request(region: region, params: [
+            "Action": "CreateSubnet",
+            "VpcId": vpcId,
+            "CidrBlock": "10.0.1.0/24",
+            "TagSpecification.1.ResourceType": "subnet",
+            "TagSpecification.1.Tag.1.Key": "Name",
+            "TagSpecification.1.Tag.1.Value": "exitlauncher",
+        ])
+        let subnetXml = String(data: subnetData, encoding: .utf8) ?? ""
+        guard let subnetId = extractXMLValue(from: subnetXml, tag: "subnetId") else {
+            throw AWSError.parseError("Failed to create subnet")
+        }
+
+        // 3. Create internet gateway
+        let igwData = try await ec2Request(region: region, params: [
+            "Action": "CreateInternetGateway",
+            "TagSpecification.1.ResourceType": "internet-gateway",
+            "TagSpecification.1.Tag.1.Key": "Name",
+            "TagSpecification.1.Tag.1.Value": "exitlauncher",
+        ])
+        let igwXml = String(data: igwData, encoding: .utf8) ?? ""
+        guard let igwId = extractXMLValue(from: igwXml, tag: "internetGatewayId") else {
+            throw AWSError.parseError("Failed to create internet gateway")
+        }
+
+        // 4. Attach internet gateway to VPC
+        _ = try await ec2Request(region: region, params: [
+            "Action": "AttachInternetGateway",
+            "InternetGatewayId": igwId,
+            "VpcId": vpcId,
+        ])
+
+        // 5. Find the route table for the VPC and add a default route
+        let rtData = try await ec2Request(region: region, params: [
+            "Action": "DescribeRouteTables",
+            "Filter.1.Name": "vpc-id",
+            "Filter.1.Value.1": vpcId,
+        ])
+        let rtXml = String(data: rtData, encoding: .utf8) ?? ""
+        if let rtId = extractXMLValue(from: rtXml, tag: "routeTableId") {
+            _ = try? await ec2Request(region: region, params: [
+                "Action": "CreateRoute",
+                "RouteTableId": rtId,
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": igwId,
+            ])
+        }
+
+        return subnetId
+    }
+
     // MARK: - Instances
 
     func createInstance(region: String, userData: String, label: String) async throws -> VPSInstance {
-        guard let amiId = Self.ubuntuAMIs[region] else {
-            throw AWSError.parseError("No AMI configured for region \(region)")
-        }
+        let amiId = try await lookupUbuntuAMI(region: region)
+        let subnetId = try await findOrCreateSubnet(region: region)
 
         let params: [String: String] = [
             "Action": "RunInstances",
@@ -133,7 +234,10 @@ actor AWSAPI {
             "InstanceType": "t3.nano",
             "MinCount": "1",
             "MaxCount": "1",
-            "UserData": userData, // already base64
+            "UserData": userData,
+            "NetworkInterface.1.DeviceIndex": "0",
+            "NetworkInterface.1.SubnetId": subnetId,
+            "NetworkInterface.1.AssociatePublicIpAddress": "true",
             "TagSpecification.1.ResourceType": "instance",
             "TagSpecification.1.Tag.1.Key": "Name",
             "TagSpecification.1.Tag.1.Value": label,
