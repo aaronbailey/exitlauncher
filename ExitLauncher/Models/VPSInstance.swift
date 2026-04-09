@@ -9,6 +9,7 @@ enum InstanceStatus: String, Codable {
 
 struct VPSInstance: Identifiable, Codable {
     let id: String
+    let provider: Provider
     let region: String
     let regionName: String
     let tailscaleHostname: String

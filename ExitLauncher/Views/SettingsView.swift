@@ -3,16 +3,20 @@ import SwiftUI
 struct SettingsView: View {
     var onDismiss: (() -> Void)?
 
-    @State private var vultrAPIKey: String = ""
-    @State private var tailscaleAuthKey: String = ""
-    @State private var tailscaleAPIKey: String = ""
+    @State private var keys: [KeychainKey: String] = [:]
+    @State private var visibility: [KeychainKey: Bool] = [:]
     @State private var saveStatus: String?
-    @State private var isVultrKeyVisible = false
-    @State private var isTailscaleAuthVisible = false
-    @State private var isTailscaleAPIVisible = false
+
+    private let fields: [(KeychainKey, String, String)] = [
+        (.vultrAPIKey, "Vultr API Key", "my.vultr.com/settings/#settingsapi"),
+        (.digitalOceanAPIKey, "Digital Ocean API Key", "cloud.digitalocean.com/account/api/tokens"),
+        (.flyioAPIKey, "Fly.io API Token", "fly.io/docs/flyctl/tokens/"),
+        (.tailscaleAuthKey, "Tailscale Auth Key", "Reusable key for VPS to join tailnet (tskey-auth-...)"),
+        (.tailscaleAPIKey, "Tailscale API Key", "Auto-approve exit node routes (tskey-api-...)"),
+    ]
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             // Header
             HStack {
                 if let onDismiss {
@@ -26,31 +30,29 @@ struct SettingsView: View {
                 Spacer()
             }
 
-            // Vultr
-            keyField(
-                label: "Vultr API Key",
-                hint: "From my.vultr.com/settings/#settingsapi",
-                text: $vultrAPIKey,
-                isVisible: $isVultrKeyVisible
-            )
+            ScrollView {
+                VStack(spacing: 10) {
+                    Text("Providers (add at least one)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Tailscale Auth Key
-            keyField(
-                label: "Tailscale Auth Key",
-                hint: "For VPS nodes to join your tailnet (tskey-auth-...)",
-                text: $tailscaleAuthKey,
-                isVisible: $isTailscaleAuthVisible
-            )
+                    ForEach(fields.prefix(3), id: \.0) { field in
+                        keyField(key: field.0, label: field.1, hint: field.2)
+                    }
 
-            // Tailscale API Key
-            keyField(
-                label: "Tailscale API Key",
-                hint: "To auto-approve exit node routes (tskey-api-...)",
-                text: $tailscaleAPIKey,
-                isVisible: $isTailscaleAPIVisible
-            )
+                    Divider()
 
-            Spacer()
+                    Text("Tailscale")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    ForEach(fields.suffix(2), id: \.0) { field in
+                        keyField(key: field.0, label: field.1, hint: field.2)
+                    }
+                }
+            }
 
             // Save
             HStack {
@@ -72,32 +74,39 @@ struct SettingsView: View {
         .padding(16)
         .frame(width: 360)
         .onAppear {
-            vultrAPIKey = KeychainService.read(key: .vultrAPIKey) ?? ""
-            tailscaleAuthKey = KeychainService.read(key: .tailscaleAuthKey) ?? ""
-            tailscaleAPIKey = KeychainService.read(key: .tailscaleAPIKey) ?? ""
+            for field in fields {
+                keys[field.0] = KeychainService.read(key: field.0) ?? ""
+                visibility[field.0] = false
+            }
         }
     }
 
-    private func keyField(label: String, hint: String, text: Binding<String>, isVisible: Binding<Bool>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func keyField(key: KeychainKey, label: String, hint: String) -> some View {
+        let textBinding = Binding<String>(
+            get: { keys[key] ?? "" },
+            set: { keys[key] = $0 }
+        )
+        let isVisible = visibility[key] ?? false
+
+        return VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 4) {
                 Group {
-                    if isVisible.wrappedValue {
-                        TextField(label, text: text)
+                    if isVisible {
+                        TextField(label, text: textBinding)
                     } else {
-                        SecureField(label, text: text)
+                        SecureField(label, text: textBinding)
                     }
                 }
                 .textFieldStyle(.roundedBorder)
                 .font(.caption)
 
                 Button {
-                    isVisible.wrappedValue.toggle()
+                    visibility[key] = !isVisible
                 } label: {
-                    Image(systemName: isVisible.wrappedValue ? "eye.slash" : "eye")
+                    Image(systemName: isVisible ? "eye.slash" : "eye")
                 }
                 .buttonStyle(.borderless)
             }
@@ -109,14 +118,10 @@ struct SettingsView: View {
 
     private func save() {
         do {
-            if !vultrAPIKey.isEmpty {
-                try KeychainService.save(key: .vultrAPIKey, value: vultrAPIKey)
-            }
-            if !tailscaleAuthKey.isEmpty {
-                try KeychainService.save(key: .tailscaleAuthKey, value: tailscaleAuthKey)
-            }
-            if !tailscaleAPIKey.isEmpty {
-                try KeychainService.save(key: .tailscaleAPIKey, value: tailscaleAPIKey)
+            for (key, value) in keys {
+                if !value.isEmpty {
+                    try KeychainService.save(key: key, value: value)
+                }
             }
             saveStatus = "Saved!"
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {

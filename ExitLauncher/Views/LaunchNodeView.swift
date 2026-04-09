@@ -34,12 +34,21 @@ struct LaunchNodeView: View {
     @EnvironmentObject var manager: InstanceManager
     var onDismiss: () -> Void
 
+    @State private var selectedProvider: Provider = .vultr
     @State private var regions: [Region] = []
     @State private var selectedRegion: Region?
     @State private var selectedTimer: DestroyTimer = .oneHour
     @State private var isLoadingRegions = true
     @State private var loadError: String?
     @State private var favorites: Set<String> = []
+
+    /// Only show providers that have an API key configured
+    private var availableProviders: [Provider] {
+        Provider.allCases.filter { provider in
+            let key = KeychainService.read(key: provider.keychainKey)
+            return key != nil && !key!.isEmpty
+        }
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -52,6 +61,11 @@ struct LaunchNodeView: View {
                 Text("Launch New Exit Node")
                     .font(.headline)
                 Spacer()
+            }
+
+            // Provider picker (only if multiple configured)
+            if availableProviders.count > 1 {
+                providerPicker
             }
 
             if isLoadingRegions {
@@ -68,6 +82,17 @@ struct LaunchNodeView: View {
                     Button("Retry") {
                         Task { await loadRegions() }
                     }
+                }
+                .frame(maxWidth: .infinity, minHeight: 180)
+            } else if availableProviders.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "key")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("No provider API keys configured.\nAdd at least one in Settings.")
+                        .font(.caption)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, minHeight: 180)
             } else {
@@ -97,7 +122,25 @@ struct LaunchNodeView: View {
         .frame(width: 360)
         .task {
             favorites = FavoritesStore.load()
+            if let first = availableProviders.first {
+                selectedProvider = first
+            }
             await loadRegions()
+        }
+    }
+
+    // MARK: - Provider Picker
+
+    private var providerPicker: some View {
+        Picker("Provider", selection: $selectedProvider) {
+            ForEach(availableProviders) { provider in
+                Text(provider.displayName).tag(provider)
+            }
+        }
+        .pickerStyle(.segmented)
+        .onChange(of: selectedProvider) { _ in
+            selectedRegion = nil
+            Task { await loadRegions() }
         }
     }
 
@@ -109,7 +152,8 @@ struct LaunchNodeView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            let favoriteRegions = regions.filter { favorites.contains($0.id) }
+            // Favorites use provider-prefixed IDs to avoid collisions
+            let favoriteRegions = regions.filter { favorites.contains(favoriteKey($0)) }
             let grouped = Dictionary(grouping: regions, by: \.continent)
             let sortedContinents = grouped.keys.sorted()
 
@@ -138,14 +182,15 @@ struct LaunchNodeView: View {
     }
 
     private func regionRow(_ region: Region) -> some View {
-        HStack {
+        let key = favoriteKey(region)
+        return HStack {
             Text(region.displayName)
             Spacer()
             Button {
-                toggleFavorite(region.id)
+                toggleFavorite(key)
             } label: {
-                Image(systemName: favorites.contains(region.id) ? "star.fill" : "star")
-                    .foregroundStyle(favorites.contains(region.id) ? .yellow : .secondary)
+                Image(systemName: favorites.contains(key) ? "star.fill" : "star")
+                    .foregroundStyle(favorites.contains(key) ? .yellow : .secondary)
                     .font(.caption)
             }
             .buttonStyle(.plain)
@@ -153,11 +198,15 @@ struct LaunchNodeView: View {
         }
     }
 
-    private func toggleFavorite(_ id: String) {
-        if favorites.contains(id) {
-            favorites.remove(id)
+    private func favoriteKey(_ region: Region) -> String {
+        "\(region.provider.rawValue):\(region.id)"
+    }
+
+    private func toggleFavorite(_ key: String) {
+        if favorites.contains(key) {
+            favorites.remove(key)
         } else {
-            favorites.insert(id)
+            favorites.insert(key)
         }
         FavoritesStore.save(favorites)
     }
@@ -184,7 +233,7 @@ struct LaunchNodeView: View {
         isLoadingRegions = true
         loadError = nil
         do {
-            regions = try await manager.vultr.listRegions()
+            regions = try await manager.loadRegions(for: selectedProvider)
             isLoadingRegions = false
         } catch {
             loadError = error.localizedDescription

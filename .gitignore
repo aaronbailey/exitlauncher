@@ -1,0 +1,21 @@
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# App secrets (stored in Application Support, not repo)
+secrets.json
+
+# Claude
+.claude/
+ExitLauncher.zip
+CLAUDE.md

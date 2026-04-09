@@ -11,18 +11,25 @@ struct NodeRowView: View {
                 Text(instance.regionName)
                     .font(.body)
                     .lineLimit(1)
-                Text(instance.tailscaleHostname)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(instance.provider.displayName)
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                    Text(instance.tailscaleHostname)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if instance.status == .ready {
-                    HStack(spacing: 8) {
-                        Label(instance.uptimeFormatted, systemImage: "clock")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        if let remaining = instance.timeRemainingFormatted {
-                            Label(remaining, systemImage: "timer")
+                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                        HStack(spacing: 8) {
+                            Label(instance.uptimeFormatted, systemImage: "clock")
                                 .font(.caption2)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.secondary)
+                            if let remaining = instance.timeRemainingFormatted {
+                                Label(remaining, systemImage: "timer")
+                                    .font(.caption2)
+                                    .foregroundStyle(.orange)
+                            }
                         }
                     }
                 }

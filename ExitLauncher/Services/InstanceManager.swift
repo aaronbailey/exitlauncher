@@ -5,10 +5,12 @@ import Combine
 class InstanceManager: ObservableObject {
     @Published var instances: [VPSInstance] = []
     @Published var isLaunching = false
-    @Published var currentExitNode: String? = nil // tailscale hostname
+    @Published var currentExitNode: String? = nil
     @Published var lastError: String?
 
     let vultr = VultrAPI()
+    let digitalOcean = DigitalOceanAPI()
+    let flyio = FlyioAPI()
     let tailscaleAPI = TailscaleAPI()
     private let store = InstanceStore()
     private var destroyTimer: Timer?
@@ -17,12 +19,24 @@ class InstanceManager: ObservableObject {
 
     func loadState() async {
         instances = await store.load()
-        // Refresh status of provisioning instances
         for i in instances.indices where instances[i].status == .provisioning {
-            await pollInstanceStatus(id: instances[i].id, index: i)
+            pollUntilReady(instanceId: instances[i].id, provider: instances[i].provider)
         }
         startDestroyTimer()
         await refreshTailscaleStatus()
+    }
+
+    // MARK: - Region Loading
+
+    func loadRegions(for provider: Provider) async throws -> [Region] {
+        switch provider {
+        case .vultr:
+            return try await vultr.listRegions()
+        case .digitalOcean:
+            return try await digitalOcean.listRegions()
+        case .flyio:
+            return await flyio.listRegions()
+        }
     }
 
     // MARK: - Launch
@@ -37,18 +51,30 @@ class InstanceManager: ObservableObject {
         lastError = nil
 
         let hostname = CloudInitService.generateHostname(region: region.id)
-        let userData = CloudInitService.generateBase64UserData(authKey: authKey, hostname: hostname)
-        let plan = "vc2-1c-1gb"
 
         do {
-            var instance = try await vultr.createInstance(
-                region: region.id,
-                plan: plan,
-                userData: userData,
-                label: hostname
-            )
+            var instance: VPSInstance
+
+            switch region.provider {
+            case .vultr:
+                let userData = CloudInitService.generateBase64UserData(authKey: authKey, hostname: hostname)
+                instance = try await vultr.createInstance(
+                    region: region.id, plan: "vc2-1c-1gb", userData: userData, label: hostname
+                )
+            case .digitalOcean:
+                let userData = CloudInitService.generateUserData(authKey: authKey, hostname: hostname)
+                instance = try await digitalOcean.createInstance(
+                    region: region.id, userData: userData, label: hostname
+                )
+            case .flyio:
+                instance = try await flyio.createMachine(
+                    region: region.id, authKey: authKey, hostname: hostname
+                )
+            }
+
             instance = VPSInstance(
                 id: instance.id,
+                provider: region.provider,
                 region: region.id,
                 regionName: region.displayName,
                 tailscaleHostname: hostname,
@@ -60,8 +86,7 @@ class InstanceManager: ObservableObject {
             instances.append(instance)
             await store.save(instances)
 
-            // Start polling for readiness
-            pollUntilReady(instanceId: instance.id)
+            pollUntilReady(instanceId: instance.id, provider: region.provider)
         } catch {
             lastError = error.localizedDescription
         }
@@ -71,24 +96,38 @@ class InstanceManager: ObservableObject {
 
     // MARK: - Polling
 
-    private func pollUntilReady(instanceId: String) {
+    private func pollUntilReady(instanceId: String, provider: Provider) {
         Task {
-            // Phase 1: Wait for Vultr instance to be active
-            var vultrReady = false
-            for _ in 0..<60 { // poll for up to 5 minutes
-                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+            // Phase 1: Wait for instance to be active
+            var providerReady = false
+            for _ in 0..<60 {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
 
                 guard let index = instances.firstIndex(where: { $0.id == instanceId }) else { return }
 
                 do {
-                    let detail = try await vultr.getInstance(id: instanceId)
-
-                    if detail.status == "active" && detail.powerStatus == "running" && detail.serverStatus == "ok" {
-                        if instances[index].ipAddress.isEmpty || instances[index].ipAddress == "0.0.0.0" {
+                    let isReady: Bool
+                    switch provider {
+                    case .vultr:
+                        let detail = try await vultr.getInstance(id: instanceId)
+                        isReady = detail.status == "active" && detail.powerStatus == "running" && detail.serverStatus == "ok"
+                        if isReady && (instances[index].ipAddress.isEmpty || instances[index].ipAddress == "0.0.0.0") {
                             instances[index].ipAddress = detail.mainIp
                         }
+                    case .digitalOcean:
+                        let detail = try await digitalOcean.getInstance(id: instanceId)
+                        isReady = detail.status == "active"
+                        if isReady, let ip = detail.networks?.v4?.first(where: { $0.type == "public" })?.ipAddress {
+                            instances[index].ipAddress = ip
+                        }
+                    case .flyio:
+                        let machine = try await flyio.getMachine(id: instanceId)
+                        isReady = machine.state == "started"
+                    }
+
+                    if isReady {
                         await store.save(instances)
-                        vultrReady = true
+                        providerReady = true
                         break
                     }
                 } catch {
@@ -96,10 +135,10 @@ class InstanceManager: ObservableObject {
                 }
             }
 
-            guard vultrReady else {
+            guard providerReady else {
                 if let index = instances.firstIndex(where: { $0.id == instanceId }) {
                     instances[index].status = .error
-                    lastError = "VPS failed to start"
+                    lastError = "Instance failed to start"
                     await store.save(instances)
                 }
                 return
@@ -109,22 +148,19 @@ class InstanceManager: ObservableObject {
             guard let index = instances.firstIndex(where: { $0.id == instanceId }) else { return }
             let hostname = instances[index].tailscaleHostname
 
-            for _ in 0..<36 { // poll for up to 3 more minutes
+            for _ in 0..<36 {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
 
                 do {
                     try await tailscaleAPI.approveExitNode(hostname: hostname)
-                    // Success — node found and routes approved
                     if let idx = instances.firstIndex(where: { $0.id == instanceId }) {
                         instances[idx].status = .ready
                         await store.save(instances)
                     }
                     return
                 } catch TailscaleAPIError.deviceNotFound {
-                    // Node hasn't joined tailnet yet, keep polling
                     continue
                 } catch TailscaleAPIError.noAPIKey {
-                    // No API key configured — mark ready anyway, user can approve manually
                     if let idx = instances.firstIndex(where: { $0.id == instanceId }) {
                         instances[idx].status = .ready
                         lastError = "Node is up but exit node route needs manual approval (no Tailscale API key configured)"
@@ -132,33 +168,16 @@ class InstanceManager: ObservableObject {
                     }
                     return
                 } catch {
-                    // Other error — keep trying
                     continue
                 }
             }
 
-            // Timeout waiting for Tailscale — mark ready but warn
             if let idx = instances.firstIndex(where: { $0.id == instanceId }) {
                 instances[idx].status = .ready
                 lastError = "Node is up but may not have joined Tailscale yet"
                 await store.save(instances)
             }
         }
-    }
-
-    private func pollInstanceStatus(id: String, index: Int) async {
-        do {
-            let detail = try await vultr.getInstance(id: id)
-            if detail.status == "active" && detail.powerStatus == "running" && detail.serverStatus == "ok" {
-                instances[index].status = .ready
-                if instances[index].ipAddress.isEmpty || instances[index].ipAddress == "0.0.0.0" {
-                    instances[index].ipAddress = detail.mainIp
-                }
-            }
-        } catch {
-            instances[index].status = .error
-        }
-        await store.save(instances)
     }
 
     // MARK: - Destroy
@@ -168,19 +187,27 @@ class InstanceManager: ObservableObject {
         instances[index].status = .destroying
         lastError = nil
 
-        // If this was our exit node, disconnect first
         if currentExitNode == instance.tailscaleHostname {
             try? await TailscaleService.clearExitNode()
             currentExitNode = nil
         }
 
         do {
-            try await vultr.deleteInstance(id: instance.id)
+            switch instance.provider {
+            case .vultr:
+                try await vultr.deleteInstance(id: instance.id)
+            case .digitalOcean:
+                try await digitalOcean.deleteInstance(id: instance.id)
+            case .flyio:
+                try await flyio.deleteMachine(id: instance.id)
+            }
             instances.removeAll { $0.id == instance.id }
             await store.save(instances)
         } catch {
             lastError = error.localizedDescription
-            instances[index].status = .error
+            if let idx = instances.firstIndex(where: { $0.id == instance.id }) {
+                instances[idx].status = .error
+            }
         }
     }
 
@@ -209,9 +236,7 @@ class InstanceManager: ObservableObject {
         do {
             let status = try await TailscaleService.status()
             currentExitNode = status.currentExitNode?.hostName
-        } catch {
-            // Tailscale might not be running — that's okay
-        }
+        } catch {}
     }
 
     // MARK: - Auto-Destroy Timer
@@ -227,12 +252,11 @@ class InstanceManager: ObservableObject {
 
     private func checkAutoDestroy() async {
         let now = Date()
-        let expiredInstances = instances.filter { instance in
-            guard let destroyAt = instance.destroyAt else { return false }
-            return destroyAt <= now && instance.status != .destroying
+        let expired = instances.filter { inst in
+            guard let destroyAt = inst.destroyAt else { return false }
+            return destroyAt <= now && inst.status != .destroying
         }
-
-        for instance in expiredInstances {
+        for instance in expired {
             await destroyNode(instance)
         }
     }

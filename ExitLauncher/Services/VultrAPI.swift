@@ -70,7 +70,7 @@ actor VultrAPI {
         let (data, _) = try await request("GET", path: "regions")
         let response = try decoder.decode(RegionsResponse.self, from: data)
         return response.regions.map { r in
-            Region(id: r.id, city: r.city, country: r.country, continent: r.continent)
+            Region(id: r.id, provider: .vultr, city: r.city, country: r.country, continent: r.continent)
         }
     }
 
@@ -104,6 +104,7 @@ actor VultrAPI {
 
         return VPSInstance(
             id: inst.id,
+            provider: .vultr,
             region: region,
             regionName: label,
             tailscaleHostname: label,
