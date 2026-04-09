@@ -166,7 +166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct ExitNodeApp: App {
+struct ExitLauncherApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {

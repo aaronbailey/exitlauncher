@@ -9,18 +9,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 xcodegen generate
 
 # Build
-xcodebuild -project ExitNode.xcodeproj -scheme ExitNode -configuration Debug build
+xcodebuild -project ExitLauncher.xcodeproj -scheme ExitLauncher -configuration Debug build
 
 # Run
-open ~/Library/Developer/Xcode/DerivedData/ExitNode-*/Build/Products/Debug/ExitNode.app
-# Or use Cmd+R in Xcode after: open ExitNode.xcodeproj
+open ~/Library/Developer/Xcode/DerivedData/ExitLauncher-*/Build/Products/Debug/ExitLauncher.app
+# Or use Cmd+R in Xcode after: open ExitLauncher.xcodeproj
 ```
 
-Xcodegen regenerates `Info.plist` and clears `ExitNode.entitlements` — after running `xcodegen generate`, restore the entitlements `com.apple.security.network.client` key.
+Xcodegen regenerates `Info.plist` and clears `ExitLauncher.entitlements` — after running `xcodegen generate`, restore the entitlements `com.apple.security.network.client` key.
 
 ## Architecture
 
-**ExitNode** is a macOS menu bar app (LSUIElement) that provisions Vultr VPS instances as Tailscale exit nodes. It uses `NSStatusBar` + `NSPopover` (not `MenuBarExtra`, which fails to render on macOS 26).
+**ExitLauncher** is a macOS menu bar app (LSUIElement) that provisions Vultr VPS instances as Tailscale exit nodes. It uses `NSStatusBar` + `NSPopover` (not `MenuBarExtra`, which fails to render on macOS 26).
 
 ### Core flow
 1. User picks a Vultr region → `InstanceManager.launchNode()` calls `VultrAPI.createInstance()` with cloud-init user data that installs Tailscale
@@ -30,10 +30,10 @@ Xcodegen regenerates `Info.plist` and clears `ExitNode.entitlements` — after r
 
 ### Key services
 - **VultrAPI** (actor) — REST client for Vultr v2 API. User data must be base64-encoded.
-- **TailscaleService** — Talks to the Tailscale Mac App Store local HTTP API at `127.0.0.1:{port}`. Auth discovered from `~/Library/Group Containers/W5364U7YZB.group.io.tailscale.ipn.macos/sameuserproof-{port}-{password}`.
+- **TailscaleService** — Talks to the Tailscale Mac App Store local HTTP API at `127.0.0.1:{port}`. Auth discovered via `lsof -c IPNExtension` parsing the sameuserproof filename.
 - **TailscaleAPI** (actor) — Tailscale management API (api.tailscale.com) for approving exit node routes on new devices.
 - **InstanceManager** (@MainActor ObservableObject) — Central orchestrator connecting all services, owns published state.
-- **KeychainService** — File-based secrets at `~/Library/Application Support/ExitNode/secrets.json` (not actual Keychain — avoids repeated password prompts for unsigned apps).
+- **KeychainService** — File-based secrets at `~/Library/Application Support/ExitLauncher/secrets.json` (not actual Keychain — avoids repeated password prompts for unsigned apps).
 
 ### Tailscale local API quirks
 - The Mac App Store Tailscale CLI binary crashes with `BundleIdentifiers.swift: Fatal error` — always use the local HTTP API instead.

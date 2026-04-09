@@ -16,7 +16,7 @@ actor InstanceStore {
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let appDir = appSupport.appendingPathComponent("ExitNode", isDirectory: true)
+        let appDir = appSupport.appendingPathComponent("ExitLauncher", isDirectory: true)
         try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
         self.fileURL = appDir.appendingPathComponent("instances.json")
     }

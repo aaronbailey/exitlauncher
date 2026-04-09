@@ -167,7 +167,7 @@ struct MenuBarView: View {
                 NSApplication.shared.terminate(nil)
             } label: {
                 HStack {
-                    Text("Quit ExitNode")
+                    Text("Quit ExitLauncher")
                     Spacer()
                 }
             }
